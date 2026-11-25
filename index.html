@@ -1,0 +1,532 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nova Browser</title>
+
+<style>
+* { box-sizing:border-box; }
+
+body {
+  margin:0;
+  background:#090b12;
+  color:white;
+  font-family:Arial,sans-serif;
+  overflow:hidden;
+}
+
+.top {
+  background:#111522;
+  border-bottom:1px solid #293047;
+}
+
+.brand {
+  padding:12px 16px;
+  font-size:19px;
+  font-weight:bold;
+  color:#8da0ff;
+}
+
+.tabs {
+  display:flex;
+  overflow-x:auto;
+  gap:5px;
+  padding:5px 10px;
+}
+
+.tab {
+  background:#202638;
+  padding:10px 13px;
+  border-radius:9px 9px 0 0;
+  min-width:110px;
+  max-width:180px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  cursor:pointer;
+  color:#aeb8d1;
+}
+
+.tab.active {
+  background:#303b59;
+  color:white;
+}
+
+.tabname {
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  flex:1;
+}
+
+.close {
+  color:#ff7777;
+  font-weight:bold;
+}
+
+.newtab {
+  background:#303b59;
+  min-width:38px;
+}
+
+.toolbar {
+  padding:9px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+}
+
+button {
+  border:0;
+  border-radius:8px;
+  background:#28334c;
+  color:white;
+  padding:10px 13px;
+  cursor:pointer;
+}
+
+button:hover { background:#40527a; }
+
+.go { background:#5268ed; }
+
+.address {
+  flex:1;
+  min-width:120px;
+  background:#202638;
+  color:white;
+  border:1px solid #38445f;
+  border-radius:9px;
+  padding:11px;
+  outline:none;
+}
+
+.address:focus { border-color:#8093ff; }
+
+#external {
+  background:#7552d9;
+}
+
+#bookmarks {
+  padding:7px 12px;
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  border-top:1px solid #252d40;
+}
+
+.bookmark {
+  white-space:nowrap;
+  background:#202638;
+  padding:7px 12px;
+  border-radius:7px;
+  cursor:pointer;
+  font-size:12px;
+}
+
+#views {
+  position:relative;
+  height:calc(100vh - 164px);
+  background:white;
+}
+
+.view {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  border:0;
+  background:white;
+  display:none;
+}
+
+.view.active { display:block; }
+
+.home {
+  height:100%;
+  background:#0b1020;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  text-align:center;
+  padding:20px;
+}
+
+.home h1 {
+  font-size:42px;
+  color:#8da0ff;
+  margin-bottom:5px;
+}
+
+.home p { color:#aab4d0; }
+
+.home input {
+  width:min(550px,95%);
+  padding:15px;
+  border-radius:10px;
+  border:1px solid #394568;
+  background:#202638;
+  color:white;
+  font-size:16px;
+  margin:15px;
+}
+
+#notice {
+  position:absolute;
+  bottom:12px;
+  left:12px;
+  right:12px;
+  background:#202638;
+  color:#c5cce0;
+  padding:12px;
+  border-radius:10px;
+  font-size:12px;
+  display:none;
+  z-index:5;
+}
+
+#notice button {
+  margin-left:8px;
+  background:#7552d9;
+}
+
+@media(max-width:600px) {
+  .brand { padding:9px; }
+  .toolbar { gap:4px; }
+  .toolbar button { padding:10px; }
+  #views { height:calc(100vh - 190px); }
+}
+</style>
+</head>
+
+<body>
+
+<div class="top">
+  <div class="brand">✦ NOVA BROWSER</div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="toolbar">
+    <button onclick="back()">←</button>
+    <button onclick="forward()">→</button>
+    <button onclick="reload()">↻</button>
+    <button onclick="home()">⌂</button>
+
+    <input
+      class="address"
+      id="address"
+      placeholder="Search or enter URL..."
+      onkeydown="if(event.key==='Enter') navigate()"
+    >
+
+    <button class="go" onclick="navigate()">GO</button>
+    <button onclick="bookmark()">★</button>
+    <button id="external" onclick="openExternal()">↗</button>
+    <button onclick="fullscreen()">⛶</button>
+  </div>
+
+  <div id="bookmarks"></div>
+</div>
+
+<div id="views"></div>
+
+<div id="notice">
+  This website may not allow embedded viewing.
+  <button onclick="openExternal()">Open in New Tab ↗</button>
+  <button onclick="this.parentElement.style.display='none'">×</button>
+</div>
+
+<script>
+let tabs = [];
+let active = null;
+let nextId = 1;
+
+const $ = id => document.getElementById(id);
+
+function makeTab(url = "") {
+  const id = nextId++;
+
+  const iframe = document.createElement("iframe");
+  iframe.className = "view";
+  iframe.title = "Browser tab";
+  iframe.referrerPolicy = "no-referrer";
+
+  const homePage = document.createElement("div");
+  homePage.className = "view home";
+
+  homePage.innerHTML = `
+    <h1>✦ NOVA</h1>
+    <p>Your browser. Your destination.</p>
+    <input placeholder="Search or enter URL..."
+      onkeydown="if(event.key==='Enter') {
+        document.getElementById('address').value=this.value;
+        navigate();
+      }">
+    <p>Enter a website above to get started.</p>
+  `;
+
+  $("views").append(iframe, homePage);
+
+  const tab = {
+    id,
+    iframe,
+    homePage,
+    history: [],
+    position: -1,
+    title: "New Tab",
+    current: ""
+  };
+
+  tabs.push(tab);
+  activate(id);
+
+  if(url) load(tab,url);
+
+  return tab;
+}
+
+function activate(id) {
+  active = id;
+
+  tabs.forEach(t => {
+    t.iframe.classList.toggle("active",t.id===id);
+    t.homePage.classList.toggle(
+      "active",t.id===id && !t.current
+    );
+  });
+
+  renderTabs();
+
+  const t = current();
+  $("address").value = t.current || "";
+  $("notice").style.display = "none";
+}
+
+function current() {
+  return tabs.find(t => t.id===active);
+}
+
+function renderTabs() {
+  $("tabs").innerHTML = "";
+
+  tabs.forEach(t => {
+    const el = document.createElement("div");
+    el.className = "tab" + (t.id===active?" active":"");
+
+    const name = document.createElement("span");
+    name.className = "tabname";
+    name.textContent = t.title;
+
+    const close = document.createElement("span");
+    close.className = "close";
+    close.textContent = "×";
+
+    close.onclick = e => {
+      e.stopPropagation();
+      closeTab(t.id);
+    };
+
+    el.append(name,close);
+    el.onclick = () => activate(t.id);
+
+    $("tabs").append(el);
+  });
+
+  const add = document.createElement("button");
+  add.className = "newtab";
+  add.textContent = "+";
+  add.onclick = () => makeTab();
+
+  $("tabs").append(add);
+}
+
+function normalize(value) {
+  value = value.trim();
+
+  if(!value) return "";
+
+  if(!/^https?:\/\//i.test(value)) {
+    if(value.includes(".") && !value.includes(" ")) {
+      value = "https://" + value;
+    } else {
+      value = "https://www.google.com/search?q=" +
+        encodeURIComponent(value);
+    }
+  }
+
+  const parsed = new URL(value);
+
+  if(!["http:","https:"].includes(parsed.protocol)) {
+    throw new Error("Invalid address");
+  }
+
+  return parsed.href;
+}
+
+function navigate() {
+  try {
+    const url = normalize($("address").value);
+    if(!url) return;
+
+    load(current(),url,true);
+  } catch(e) {
+    alert("Please enter a valid website.");
+  }
+}
+
+function load(t,url,addHistory=false) {
+  t.current = url;
+
+  if(addHistory) {
+    t.history = t.history.slice(0,t.position+1);
+    t.history.push(url);
+    t.position++;
+  }
+
+  t.homePage.classList.remove("active");
+  t.iframe.classList.add("active");
+
+  t.iframe.src = url;
+
+  if(t.id===active) {
+    $("address").value = url;
+    $("notice").style.display = "block";
+  }
+
+  t.title = new URL(url).hostname;
+  renderTabs();
+
+  // The page title may be inaccessible on cross-origin sites.
+}
+
+function home() {
+  const t = current();
+
+  t.current = "";
+  t.iframe.src = "about:blank";
+  t.iframe.classList.remove("active");
+  t.homePage.classList.add("active");
+
+  $("address").value = "";
+  $("notice").style.display = "none";
+
+  t.title = "New Tab";
+  renderTabs();
+}
+
+function back() {
+  const t = current();
+
+  if(t.position > 0) {
+    t.position--;
+    load(t,t.history[t.position]);
+  } else {
+    try { t.iframe.contentWindow.history.back(); }
+    catch(e) {}
+  }
+}
+
+function forward() {
+  const t = current();
+
+  if(t.position < t.history.length-1) {
+    t.position++;
+    load(t,t.history[t.position]);
+  } else {
+    try { t.iframe.contentWindow.history.forward(); }
+    catch(e) {}
+  }
+}
+
+function reload() {
+  const t = current();
+  if(t.current) t.iframe.src = t.current;
+}
+
+function openExternal() {
+  const t = current();
+
+  if(t.current) {
+    window.open(t.current,"_blank","noopener");
+  }
+}
+
+function fullscreen() {
+  const t = current();
+
+  const element = t.current ? t.iframe : t.homePage;
+
+  if(element.requestFullscreen) {
+    element.requestFullscreen();
+  }
+}
+
+function closeTab(id) {
+  if(tabs.length===1) {
+    home();
+    return;
+  }
+
+  const index = tabs.findIndex(t=>t.id===id);
+  const t = tabs[index];
+
+  t.iframe.remove();
+  t.homePage.remove();
+  tabs.splice(index,1);
+
+  if(active===id) {
+    activate(tabs[Math.max(0,index-1)].id);
+  } else {
+    renderTabs();
+  }
+}
+
+let savedBookmarks = [];
+
+try {
+  savedBookmarks = JSON.parse(
+    localStorage.getItem("novaBookmarks") || "[]"
+  );
+} catch(e) {}
+
+function bookmark() {
+  const t = current();
+
+  if(!t.current) return;
+
+  if(!savedBookmarks.includes(t.current)) {
+    savedBookmarks.push(t.current);
+
+    try {
+      localStorage.setItem(
+        "novaBookmarks",
+        JSON.stringify(savedBookmarks)
+      );
+    } catch(e) {}
+  }
+
+  renderBookmarks();
+}
+
+function renderBookmarks() {
+  $("bookmarks").innerHTML = "";
+
+  savedBookmarks.forEach(url => {
+    const b = document.createElement("div");
+    b.className = "bookmark";
+    b.textContent = "★ " + new URL(url).hostname;
+
+    b.onclick = () => load(current(),url,true);
+
+    $("bookmarks").append(b);
+  });
+}
+
+makeTab();
+renderBookmarks();
+</script>
+
+</body>
+</html>
